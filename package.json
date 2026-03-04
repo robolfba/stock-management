@@ -1,0 +1,69 @@
+{
+    "name": "stock-management",
+    "version": "0.6.0",
+    "description": "Stock Management Desktop App",
+    "main": "dist/main/main/index.js",
+    "author": "La Nacion",
+    "license": "MIT",
+    "scripts": {
+        "dev": "node scripts/dev.js",
+        "build:renderer": "vite build",
+        "build:main": "tsc -p tsconfig.main.json",
+        "build": "npm run build:renderer && npm run build:main",
+        "dist": "npm run build && electron-builder --win",
+        "postinstall": "electron-builder install-app-deps",
+        "version:patch": "npm version patch",
+        "version:minor": "npm version minor",
+        "lint": "eslint . --ext .ts,.tsx",
+        "format": "prettier --write ."
+    },
+    "devDependencies": {
+        "@types/bcryptjs": "^2.4.6",
+        "@types/better-sqlite3": "^7.6.8",
+        "@types/node": "^20.11.5",
+        "@types/react": "^18.2.55",
+        "@types/react-dom": "^18.2.19",
+        "@typescript-eslint/eslint-plugin": "^7.0.2",
+        "@typescript-eslint/parser": "^7.0.2",
+        "@vitejs/plugin-react": "^4.2.1",
+        "concurrently": "^8.2.2",
+        "electron": "^29.0.0",
+        "electron-builder": "^24.9.1",
+        "eslint": "^8.56.0",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-plugin-react": "^7.33.2",
+        "eslint-plugin-react-hooks": "^4.6.0",
+        "prettier": "^3.2.5",
+        "typescript": "^5.3.3",
+        "vite": "^5.1.1",
+        "vite-plugin-electron": "^0.28.4",
+        "wait-on": "^7.2.0"
+    },
+    "dependencies": {
+        "bcryptjs": "^3.0.3",
+        "better-sqlite3": "^9.4.3",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+    },
+    "build": {
+        "appId": "com.stock-management",
+        "productName": "Stock Management",
+        "extends": null,
+        "files": [
+            "dist/**/*"
+        ],
+        "directories": {
+            "output": "release"
+        },
+        "win": {
+            "target": "nsis",
+            "icon": "assets/icon.ico"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true
+        }
+    }
+}

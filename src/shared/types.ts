@@ -69,6 +69,7 @@ export interface ElectronAPI {
     generateManualBackup: () => Promise<string>
     listBackups: () => Promise<BackupFile[]>
     restoreBackup: (fileName: string) => Promise<void>
+    exportSalesCSV: (startDate: string, endDate: string) => Promise<{ success: boolean; filePath?: string }>
 }
 
 // Augment Window so the renderer gets type-safe access to the exposed API

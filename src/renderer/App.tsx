@@ -47,6 +47,11 @@ function App(): React.ReactElement {
     const [isRestoring, setIsRestoring] = useState(false)
     const [backupsList, setBackupsList] = useState<BackupFile[]>([])
 
+    // Export states
+    const [exportStartDate, setExportStartDate] = useState(new Date().toISOString().split('T')[0])
+    const [exportEndDate, setExportEndDate] = useState(new Date().toISOString().split('T')[0])
+    const [isExporting, setIsExporting] = useState(false)
+
     // Login states
     const [loginUsername, setLoginUsername] = useState('')
     const [loginPassword, setLoginPassword] = useState('')
@@ -131,6 +136,25 @@ function App(): React.ReactElement {
             setBackupsList(list)
         } catch (err: any) {
             console.error('Error loading backups:', err)
+        }
+    }
+
+    const handleExportSales = async () => {
+        if (!exportStartDate || !exportEndDate) {
+            addNotification('Por favor, seleccioná un rango de fechas válido.', 'warning')
+            return
+        }
+
+        setIsExporting(true)
+        try {
+            const result = await window.electronAPI.exportSalesCSV(exportStartDate, exportEndDate)
+            if (result.success) {
+                addNotification(`Ventas exportadas exitosamente en: ${result.filePath}`, 'success')
+            }
+        } catch (err: any) {
+            addNotification(err.message || 'Error al exportar ventas', 'error')
+        } finally {
+            setIsExporting(false)
         }
     }
 
@@ -713,6 +737,48 @@ function App(): React.ReactElement {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '30px 0' }} />
+                            <h3 style={{ fontSize: '16px', marginBottom: '10px' }}>Reportes y Exportación</h3>
+                            <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+                                Exportá el historial de ventas en formato CSV compatible con Excel. Seleccioná el rango de fechas deseado.
+                            </p>
+
+                            <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', marginBottom: '10px' }}>
+                                <div style={styles.inputGroup}>
+                                    <label style={styles.label}>Desde</label>
+                                    <input
+                                        type="date"
+                                        style={{ ...styles.input, width: '160px' }}
+                                        value={exportStartDate}
+                                        onChange={e => setExportStartDate(e.target.value)}
+                                    />
+                                </div>
+                                <div style={styles.inputGroup}>
+                                    <label style={styles.label}>Hasta</label>
+                                    <input
+                                        type="date"
+                                        style={{ ...styles.input, width: '160px' }}
+                                        value={exportEndDate}
+                                        onChange={e => setExportEndDate(e.target.value)}
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleExportSales}
+                                    disabled={isExporting}
+                                    style={{
+                                        ...styles.btnSuccess,
+                                        width: 'auto',
+                                        height: '40px',
+                                        backgroundColor: isExporting ? '#9ca3af' : colors.success,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    {isExporting ? '⌛ Generando...' : '📊 Exportar Ventas a CSV'}
+                                </button>
                             </div>
 
                             <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '30px 0' }} />

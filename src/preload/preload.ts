@@ -17,6 +17,7 @@ const api: ElectronAPI = {
     generateManualBackup: () => ipcRenderer.invoke('app:generate-backup'),
     listBackups: () => ipcRenderer.invoke('app:list-backups'),
     restoreBackup: (fileName) => ipcRenderer.invoke('app:restore-backup', fileName),
+    exportSalesCSV: (startDate, endDate) => ipcRenderer.invoke('app:export-sales-csv', startDate, endDate),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import * as path from 'path'
 import {
     initDatabase,
@@ -9,7 +9,8 @@ import {
     softDeleteProduct,
     manageBackups,
     createSale,
-    getUserByUsername
+    getUserByUsername,
+    getSalesDataForExport
 } from './database'
 import type { User } from '../shared/types'
 const bcrypt = require('bcryptjs')
@@ -156,6 +157,50 @@ app.whenReady().then(() => {
         const { hardDeleteProduct } = require('./database')
         return hardDeleteProduct(id)
     })
+
+    ipcMain.handle('app:export-sales-csv', async (_, startDate, endDate) => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            throw new Error('No tenés permisos para exportar datos')
+        }
+
+        const data = getSalesDataForExport(startDate, endDate)
+        if (data.length === 0) {
+            throw new Error('No hay ventas en el rango de fechas seleccionado')
+        }
+
+        // Construir CSV
+        // BOM para Excel (\ufeff)
+        let csvContent = '\ufeff'
+        const headers = ['fecha_venta', 'cliente', 'producto_nombre', 'cantidad', 'precio_unitario', 'total']
+        csvContent += headers.join(';') + '\n'
+
+        for (const row of data) {
+            const line = [
+                row.fecha_venta,
+                'Mostrador', // Cliente por defecto
+                row.producto_nombre,
+                row.cantidad,
+                row.precio_unitario,
+                row.total
+            ]
+            csvContent += line.join(';') + '\n'
+        }
+
+        const { filePath } = await dialog.showSaveDialog({
+            title: 'Exportar Ventas',
+            defaultPath: path.join(app.getPath('documents'), `ventas_${startDate}_${endDate}.csv`),
+            filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+        })
+
+        if (filePath) {
+            const fs = require('fs')
+            fs.writeFileSync(filePath, csvContent, 'utf-8')
+            return { success: true, filePath }
+        }
+
+        return { success: false }
+    })
+
 
     createWindow()
 

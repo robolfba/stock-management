@@ -467,3 +467,24 @@ export function createSale(saleData: CreateSaleData): void {
   executeTransaction(saleData)
 }
 
+export function getSalesDataForExport(startDate: string, endDate: string): any[] {
+  // Ajustar fechas para que incluyan todo el día (00:00:00 hasta 23:59:59)
+  const start = `${startDate}T00:00:00.000Z`
+  const end = `${endDate}T23:59:59.999Z`
+
+  const stmt = getDb().prepare(`
+    SELECT 
+      v.fecha as fecha_venta,
+      vi.producto_nombre,
+      vi.cantidad,
+      vi.precioUnitario as precio_unitario,
+      (vi.cantidad * vi.precioUnitario) as total
+    FROM VentaItem vi
+    JOIN Venta v ON vi.ventaId = v.id
+    WHERE v.fecha BETWEEN ? AND ?
+    ORDER BY v.fecha ASC
+  `)
+  return stmt.all(start, end)
+}
+
+

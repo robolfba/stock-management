@@ -11,7 +11,7 @@ import { logger } from './logger'
  * The version the current codebase requires.
  * Increment this whenever you add a new migration to the array below.
  */
-const REQUIRED_SCHEMA_VERSION = 1
+const REQUIRED_SCHEMA_VERSION = 2
 
 interface Migration {
   version: number
@@ -79,18 +79,38 @@ const migrations: Migration[] = [
         console.log('[migrations] Usuarios iniciales creados (admin, vendedor).')
       }
     }
-  }
+  },
+  {
+    version: 2,
+    description: 'Añade fecha_eliminacion a Producto y producto_nombre a VentaItem',
+    up: (db) => {
+      // 1. Agregar fecha_eliminacion a Producto (TEXT NULL)
+      try {
+        db.exec('ALTER TABLE Producto ADD COLUMN fecha_eliminacion TEXT DEFAULT NULL')
+      } catch (err: any) {
+        if (!err.message.includes('duplicate column name')) throw err;
+      }
 
-  // ── Add future migrations here ──────────────────────────────────────────────
-  // Example:
-  // {
-  //   version: 2,
-  //   description: 'Agrega columna precio a Producto',
-  //   up: (db) => {
-  //     // Use try/catch for ADD COLUMN since SQLite lacks "IF NOT EXISTS" for columns
-  //     try { db.exec('ALTER TABLE Producto ADD COLUMN precio REAL NOT NULL DEFAULT 0') } catch (_) {}
-  //   }
-  // },
+      // 2. Agregar producto_nombre a VentaItem (TEXT)
+      try {
+        db.exec('ALTER TABLE VentaItem ADD COLUMN producto_nombre TEXT DEFAULT NULL')
+      } catch (err: any) {
+        if (!err.message.includes('duplicate column name')) throw err;
+      }
+
+      // 3. Poblar histórico de VentaItem con los nombres actuales de Producto
+      db.exec(`
+        UPDATE VentaItem 
+        SET producto_nombre = (
+          SELECT nombre 
+          FROM Producto 
+          WHERE Producto.id = VentaItem.productoId
+        )
+        WHERE producto_nombre IS NULL
+      `)
+      console.log('[migrations] Histórico de nombres de productos actualizado en VentaItem.')
+    }
+  }
 ]
 
 /**
@@ -219,7 +239,22 @@ export function updateProduct(id: string, changes: Partial<Omit<Producto, 'id' |
 }
 
 export function softDeleteProduct(id: string): void {
-  const stmt = getDb().prepare('UPDATE Producto SET activo = 0 WHERE id = ?')
+  const stmt = getDb().prepare('UPDATE Producto SET activo = 0, fecha_eliminacion = ? WHERE id = ?')
+  stmt.run(new Date().toISOString(), id)
+}
+
+export function listDeletedProducts(): Producto[] {
+  const stmt = getDb().prepare('SELECT * FROM Producto WHERE activo = 0 ORDER BY createdAt DESC')
+  return stmt.all() as Producto[]
+}
+
+export function hardDeleteProduct(id: string): void {
+  const checkSales = getDb().prepare('SELECT COUNT(*) as count FROM VentaItem WHERE productoId = ?').get(id) as { count: number }
+  if (checkSales.count > 0) {
+    throw new Error('El producto está asociado a ventas históricas y no puede ser eliminado definitivamente para no romper los registros.')
+  }
+
+  const stmt = getDb().prepare('DELETE FROM Producto WHERE id = ?')
   stmt.run(id)
 }
 
@@ -397,8 +432,8 @@ export function createSale(saleData: CreateSaleData): void {
     insertVenta.run(data.id, data.total, new Date().toISOString())
 
     const insertItem = database.prepare(`
-            INSERT INTO VentaItem (id, ventaId, productoId, cantidad, precioUnitario)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO VentaItem (id, ventaId, productoId, cantidad, precioUnitario, producto_nombre)
+            VALUES (?, ?, ?, ?, ?, ?)
         `)
 
     const updateStock = database.prepare('UPDATE Producto SET stockActual = stockActual - ? WHERE id = ?')
@@ -421,7 +456,7 @@ export function createSale(saleData: CreateSaleData): void {
 
       // Insertar item de venta
       const itemId = `${data.id}_${item.productoId}_${Date.now()}`
-      insertItem.run(itemId, data.id, item.productoId, item.cantidad, item.precioUnitario)
+      insertItem.run(itemId, data.id, item.productoId, item.cantidad, item.precioUnitario, row.nombre)
 
       // Actualizar stock
       updateStock.run(item.cantidad, item.productoId)

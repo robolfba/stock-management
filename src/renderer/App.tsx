@@ -53,6 +53,7 @@ function App(): React.ReactElement {
 
     // Dashboard states
     const [products, setProducts] = useState<Producto[]>([])
+    const [deletedProducts, setDeletedProducts] = useState<Producto[]>([])
     const [filterLowStock, setFilterLowStock] = useState(false)
 
     // Form state (Producto)
@@ -98,8 +99,31 @@ function App(): React.ReactElement {
     useEffect(() => {
         if (view === 'settings' && user?.role === 'admin') {
             loadBackups()
+            loadDeletedProducts()
         }
     }, [view, user])
+
+    const loadDeletedProducts = async () => {
+        try {
+            const data = await window.electronAPI.listDeletedProducts()
+            setDeletedProducts(data)
+        } catch (err: any) {
+            addNotification(err.message, 'error')
+        }
+    }
+
+    const handleHardDelete = async (id: string) => {
+        const confirm = window.confirm('Esta acción borrará el ID permitiendo reutilizarlo, pero perderá su información básica.\n\n¿Estás seguro de ELIMINAR DEFINITIVAMENTE este producto?')
+        if (!confirm) return
+
+        try {
+            await window.electronAPI.hardDeleteProduct(id)
+            addNotification('Producto eliminado definitivamente de la base de datos.', 'success')
+            loadDeletedProducts()
+        } catch (err: any) {
+            addNotification(err.message, 'error')
+        }
+    }
 
     const loadBackups = async () => {
         try {
@@ -690,6 +714,54 @@ function App(): React.ReactElement {
                                     </tbody>
                                 </table>
                             </div>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '30px 0' }} />
+                            <h3 style={{ fontSize: '16px', marginBottom: '10px' }}>Productos Eliminados</h3>
+                            <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+                                Listado de productos marcados como inactivos (soft-delete). Podés eliminarlos definitivamente (hard-delete) si no poseen registros de ventas históricos.
+                            </p>
+
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={styles.table}>
+                                    <thead>
+                                        <tr>
+                                            <th style={styles.th}>ID</th>
+                                            <th style={styles.th}>Nombre</th>
+                                            <th style={styles.th}>Descripción</th>
+                                            <th style={styles.th}>Stock</th>
+                                            <th style={styles.th}>Mínimo</th>
+                                            <th style={styles.th}>Fecha Eliminación</th>
+                                            <th style={styles.th}>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {deletedProducts.map(p => (
+                                            <tr key={p.id} style={{ backgroundColor: '#fff', borderBottom: `1px solid ${colors.border}` }}>
+                                                <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '13px' }}>{p.id}</td>
+                                                <td style={styles.td}>{p.nombre}</td>
+                                                <td style={styles.td}>{p.descripcion || '-'}</td>
+                                                <td style={styles.td}>{p.stockActual}</td>
+                                                <td style={styles.td}>{p.stockMinimo}</td>
+                                                <td style={styles.td}>{p.fecha_eliminacion ? new Date(p.fecha_eliminacion).toLocaleString() : '-'}</td>
+                                                <td style={styles.td}>
+                                                    <button
+                                                        onClick={() => handleHardDelete(p.id)}
+                                                        style={{ ...styles.btnSecondary, color: '#991b1b', backgroundColor: '#fee2e2', padding: '6px 12px', fontSize: '12px', border: 'none' }}
+                                                    >
+                                                        Eliminar Definitivamente
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {deletedProducts.length === 0 && (
+                                            <tr>
+                                                <td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>No hay productos eliminados</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
                         </div>
                     </div>
                 ) : (

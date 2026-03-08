@@ -11,6 +11,7 @@ export interface Producto {
     stockMinimo: number
     activo: number // 0 o 1 para SQLite
     createdAt: string
+    fecha_eliminacion?: string | null
 }
 
 export interface Venta {
@@ -25,6 +26,7 @@ export interface VentaItem {
     productoId: string
     cantidad: number
     precioUnitario: number
+    producto_nombre?: string | null
 }
 
 export interface CreateSaleData {
@@ -55,6 +57,8 @@ export interface ElectronAPI {
     createProduct: (product: Omit<Producto, 'createdAt'>) => Promise<void>
     updateProduct: (id: string, product: Partial<Omit<Producto, 'id' | 'createdAt'>>) => Promise<void>
     softDeleteProduct: (id: string) => Promise<void>
+    listDeletedProducts: () => Promise<Producto[]>
+    hardDeleteProduct: (id: string) => Promise<void>
     listLowStockProducts: () => Promise<Producto[]>
     createSale: (saleData: CreateSaleData) => Promise<void>
 

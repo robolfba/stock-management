@@ -141,6 +141,22 @@ app.whenReady().then(() => {
         return softDeleteProduct(id)
     })
 
+    ipcMain.handle('app:list-deleted-products', () => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            throw new Error('No tenés permisos para ver productos eliminados')
+        }
+        const { listDeletedProducts } = require('./database')
+        return listDeletedProducts()
+    })
+
+    ipcMain.handle('app:hard-delete-product', (_, id) => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            throw new Error('No tenés permisos para eliminar productos definitivamente')
+        }
+        const { hardDeleteProduct } = require('./database')
+        return hardDeleteProduct(id)
+    })
+
     createWindow()
 
     app.on('activate', () => {

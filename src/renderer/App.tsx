@@ -9,34 +9,63 @@ function App(): React.ReactElement {
     // View state
     const [view, setView] = useState<'main' | 'settings'>('main')
 
+    type NotificationType = 'success' | 'error' | 'warning' | 'info'
+    interface NotificationItem {
+        id: number
+        text: string
+        type: NotificationType
+    }
+    const [notifications, setNotifications] = useState<NotificationItem[]>([])
+
+    const addNotification = (text: string, type: NotificationType = 'success') => {
+        const id = Date.now() + Math.random();
+
+        // Clean up Electron IPC error prefixes
+        let cleanText = text;
+        if (cleanText.includes('Error invoking remote method')) {
+            const parts = cleanText.split('Error: ');
+            if (parts.length > 1) {
+                // Return everything after the first "Error: "
+                cleanText = parts.slice(1).join('Error: ');
+            }
+        }
+
+        setNotifications(prev => [...prev, { id, text: cleanText, type }]);
+
+        // Auto-dismiss for all messages
+        setTimeout(() => {
+            removeNotification(id);
+        }, 5000);
+    }
+
+    const removeNotification = (id: number) => {
+        setNotifications(prev => prev.filter(n => n.id !== id))
+    }
+
     // Backup states
     const [isBackingUp, setIsBackingUp] = useState(false)
     const [isRestoring, setIsRestoring] = useState(false)
-    const [backupMessage, setBackupMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null)
     const [backupsList, setBackupsList] = useState<BackupFile[]>([])
 
     // Login states
     const [loginUsername, setLoginUsername] = useState('')
     const [loginPassword, setLoginPassword] = useState('')
-    const [authError, setAuthError] = useState<string | null>(null)
 
     // Dashboard states
     const [products, setProducts] = useState<Producto[]>([])
     const [filterLowStock, setFilterLowStock] = useState(false)
-    const [errorMessage, setErrorMessage] = useState<string | null>(null)
-    const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
     // Form state (Producto)
     const [id, setId] = useState('')
     const [nombre, setNombre] = useState('')
     const [descripcion, setDescripcion] = useState('')
-    const [stockActual, setStockActual] = useState(0)
-    const [stockMinimo, setStockMinimo] = useState(0)
+    const [stockActual, setStockActual] = useState<number | ''>('')
+    const [stockMinimo, setStockMinimo] = useState<number | ''>('')
     const [isEditing, setIsEditing] = useState(false)
 
     // Form state (Venta)
     const [selectedProductId, setSelectedProductId] = useState('')
-    const [saleQuantity, setSaleQuantity] = useState(1)
+    const [saleQuantity, setSaleQuantity] = useState<number | ''>('')
 
     // --- Efectos Iniciales ---
     useEffect(() => {
@@ -84,12 +113,11 @@ function App(): React.ReactElement {
     // --- Manejo de Autenticación ---
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
-        setAuthError(null)
         try {
             const loggedInUser = await window.electronAPI.login(loginUsername, loginPassword)
             setUser(loggedInUser)
         } catch (err: any) {
-            setAuthError(err.message || 'Error al iniciar sesión')
+            addNotification(err.message || 'Error al iniciar sesión', 'error')
         }
     }
 
@@ -99,6 +127,8 @@ function App(): React.ReactElement {
         setView('main')
         resetForm()
         resetSaleForm()
+        setLoginUsername('')
+        setLoginPassword('')
     }
 
     // --- Manejo de Formularios ---
@@ -106,59 +136,74 @@ function App(): React.ReactElement {
         setId('')
         setNombre('')
         setDescripcion('')
-        setStockActual(0)
-        setStockMinimo(0)
+        setStockActual('')
+        setStockMinimo('')
         setIsEditing(false)
-        setErrorMessage(null)
     }
 
     const resetSaleForm = () => {
         setSelectedProductId('')
-        setSaleQuantity(1)
-        setErrorMessage(null)
+        setSaleQuantity('')
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        setErrorMessage(null)
-        setSuccessMessage(null)
+
+        if (stockActual === '' || stockActual < 0 || stockMinimo === '' || stockMinimo < 0) {
+            addNotification('El stock debe ser un número igual o mayor a cero.', 'error')
+            return
+        }
+
         try {
             if (isEditing) {
                 await window.electronAPI.updateProduct(id, {
                     nombre,
                     descripcion,
-                    stockActual,
-                    stockMinimo
+                    stockActual: Number(stockActual),
+                    stockMinimo: Number(stockMinimo)
                 })
+                addNotification('Producto editado con éxito', 'success')
             } else {
                 await window.electronAPI.createProduct({
                     id: id.trim() || Date.now().toString(),
                     nombre,
                     descripcion,
-                    stockActual,
-                    stockMinimo,
+                    stockActual: Number(stockActual),
+                    stockMinimo: Number(stockMinimo),
                     activo: 1
                 })
+                addNotification('Producto registrado con éxito', 'success')
             }
             resetForm()
             loadProducts()
         } catch (err: any) {
             console.error('Error guardando:', err)
             if (err.message && err.message.includes('UNIQUE constraint failed')) {
-                setErrorMessage(`El ID "${id}" ya está registrado. Ingresá un código distinto.`)
+                addNotification(`El ID "${id}" ya está registrado. Ingresá un código distinto.`, 'error')
             } else {
-                setErrorMessage('Ocurrió un error al guardar el producto. Intentá de nuevo.')
+                addNotification('Ocurrió un error al guardar el producto. Intentá de nuevo.', 'error')
             }
         }
     }
 
     const handleSaleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        setErrorMessage(null)
-        setSuccessMessage(null)
+
+        if (saleQuantity === '' || Number(saleQuantity) <= 0) {
+            addNotification('La cantidad de venta debe ser mayor a cero.', 'error')
+            return
+        }
 
         const prod = products.find(p => p.id === selectedProductId)
-        if (!prod) return
+        if (!prod) {
+            addNotification('Por favor, seleccioná un producto válido.', 'error')
+            return
+        }
+
+        if (Number(saleQuantity) > prod.stockActual) {
+            addNotification(`Stock insuficiente. Solo hay ${prod.stockActual} unidades.`, 'error')
+            return
+        }
 
         try {
             await window.electronAPI.createSale({
@@ -166,16 +211,16 @@ function App(): React.ReactElement {
                 total: prod.stockActual * 10,
                 items: [{
                     productoId: selectedProductId,
-                    cantidad: saleQuantity,
+                    cantidad: Number(saleQuantity),
                     precioUnitario: 10
                 }]
             })
-            setSuccessMessage(`¡Venta realizada! Se descontaron ${saleQuantity} unidades de ${prod.nombre}.`)
+            addNotification(`¡Venta realizada! Se descontaron ${saleQuantity} unidades de ${prod.nombre}.`, 'success')
             resetSaleForm()
             loadProducts()
         } catch (err: any) {
             console.error('Error en venta:', err)
-            setErrorMessage(err.message || 'Error al procesar la venta.')
+            addNotification(err.message || 'Error al procesar la venta.', 'error')
         }
     }
 
@@ -186,8 +231,6 @@ function App(): React.ReactElement {
         setStockActual(p.stockActual)
         setStockMinimo(p.stockMinimo)
         setIsEditing(true)
-        setErrorMessage(null)
-        setSuccessMessage(null)
         window.scrollTo({ top: 0, behavior: 'smooth' })
     }
 
@@ -195,22 +238,22 @@ function App(): React.ReactElement {
         if (!window.confirm('¿Seguro que querés eliminar este producto?')) return
         try {
             await window.electronAPI.softDeleteProduct(deleteId)
+            addNotification('Producto eliminado.', 'success')
             loadProducts()
         } catch (err: any) {
             console.error('Error eliminando:', err)
-            setErrorMessage(err.message || 'Error al eliminar.')
+            addNotification(err.message || 'Error al eliminar.', 'error')
         }
     }
 
     const handleManualBackup = async () => {
         setIsBackingUp(true)
-        setBackupMessage(null)
         try {
             const fileName = await window.electronAPI.generateManualBackup()
-            setBackupMessage({ text: `Backup generado con éxito: ${fileName}`, type: 'success' })
+            addNotification(`Backup generado con éxito: ${fileName}`, 'success')
             loadBackups()
         } catch (err: any) {
-            setBackupMessage({ text: `Error al generar backup: ${err.message}`, type: 'error' })
+            addNotification(`Error al generar backup: ${err.message}`, 'error')
         } finally {
             setIsBackingUp(false)
         }
@@ -225,12 +268,12 @@ function App(): React.ReactElement {
         }
 
         setIsRestoring(true)
-        setBackupMessage({ text: 'Restaurando base de datos... La app se reiniciará en unos instantes.', type: 'success' })
+        addNotification('Restaurando base de datos... La app se reiniciará en unos instantes.', 'info')
         try {
             await window.electronAPI.restoreBackup(fileName)
             // No se quita el isRestoring porque la app se reinicia sola en este punto
         } catch (err: any) {
-            setBackupMessage({ text: `Error al restaurar: ${err.message}`, type: 'error' })
+            addNotification(`Error al restaurar: ${err.message}`, 'error')
             setIsRestoring(false)
         }
     }
@@ -451,49 +494,108 @@ function App(): React.ReactElement {
         }
     }
 
+    const notificationsJSX = (
+        <>
+            {/* Global Styles for Number Inputs */}
+            <style>{`
+                input[type=number]::-webkit-inner-spin-button, 
+                input[type=number]::-webkit-outer-spin-button { 
+                    -webkit-appearance: none; 
+                    margin: 0; 
+                }
+                input[type=number] {
+                    -moz-appearance: textfield;
+                }
+            `}</style>
+
+            {/* Notifications Container */}
+            <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {notifications.map(n => {
+                    const typeColors = {
+                        success: { bg: '#ecfdf5', text: '#065f46', border: '#10b981' },
+                        error: { bg: '#fee2e2', text: '#991b1b', border: '#ef4444' },
+                        warning: { bg: '#fffbeb', text: '#b45309', border: '#f59e0b' },
+                        info: { bg: '#eff6ff', text: '#1d4ed8', border: '#3b82f6' }
+                    }
+                    const c = typeColors[n.type]
+                    return (
+                        <div key={n.id} style={{
+                            backgroundColor: c.bg,
+                            color: c.text,
+                            borderLeft: `4px solid ${c.border}`,
+                            padding: '12px 16px',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            minWidth: '300px',
+                            maxWidth: '400px'
+                        }}>
+                            <span style={{ fontSize: '14px', fontWeight: '500', marginRight: '16px' }}>{n.text}</span>
+                            <button
+                                onClick={() => removeNotification(n.id)}
+                                style={{ backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: c.text, padding: '4px' }}
+                            >✕</button>
+                        </div>
+                    )
+                })}
+            </div>
+        </>
+    )
+
     if (isCheckingAuth) {
-        return <div style={styles.loginContainer}>Cargando...</div>
+        return (
+            <>
+                {notificationsJSX}
+                <div style={styles.loginContainer}>Cargando...</div>
+            </>
+        )
     }
 
     if (!user) {
         return (
-            <div style={styles.loginContainer}>
-                <div style={styles.loginCard}>
-                    <h1 style={{ marginBottom: '10px' }}>📦 Stock Management</h1>
-                    <p style={{ color: colors.textMuted, marginBottom: '30px' }}>Iniciá sesión para continuar</p>
+            <>
+                {notificationsJSX}
+                <div style={styles.loginContainer}>
+                    <div style={styles.loginCard}>
+                        <h1 style={{ marginBottom: '10px' }}>📦 Stock Management</h1>
+                        <p style={{ color: colors.textMuted, marginBottom: '30px' }}>Iniciá sesión para continuar</p>
 
-                    {authError && <div style={styles.errorBanner}>{authError}</div>}
-
-                    <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-                        <div style={styles.inputGroup}>
-                            <label style={styles.label}>Usuario</label>
-                            <input
-                                style={styles.input}
-                                required
-                                value={loginUsername}
-                                onChange={e => setLoginUsername(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
-                        <div style={styles.inputGroup}>
-                            <label style={styles.label}>Contraseña</label>
-                            <input
-                                type="password"
-                                style={styles.input}
-                                required
-                                value={loginPassword}
-                                onChange={e => setLoginPassword(e.target.value)}
-                            />
-                        </div>
-                        <button type="submit" style={{ ...styles.btnPrimary, height: '45px', marginTop: '10px' }}>Entrar</button>
-                    </form>
+                        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+                            <div style={styles.inputGroup}>
+                                <label style={styles.label}>Usuario</label>
+                                <input
+                                    style={styles.input}
+                                    required
+                                    value={loginUsername}
+                                    onChange={e => setLoginUsername(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            <div style={styles.inputGroup}>
+                                <label style={styles.label}>Contraseña</label>
+                                <input
+                                    type="password"
+                                    style={styles.input}
+                                    required
+                                    value={loginPassword}
+                                    onChange={e => setLoginPassword(e.target.value)}
+                                />
+                            </div>
+                            <button type="submit" style={{ ...styles.btnPrimary, height: '45px', marginTop: '10px' }}>Entrar</button>
+                        </form>
+                    </div>
                 </div>
-            </div>
+            </>
         )
     }
 
     return (
         <div style={styles.container}>
+            {notificationsJSX}
+
+
             <header style={styles.header}>
                 <div>
                     <h1 style={styles.title}>📦 Stock Management</h1>
@@ -532,20 +634,6 @@ function App(): React.ReactElement {
                                 El sistema guarda automáticamente una copia cada 24 horas.
                             </p>
 
-                            {backupMessage && (
-                                <div style={{
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    marginBottom: '20px',
-                                    fontSize: '14px',
-                                    backgroundColor: backupMessage.type === 'success' ? '#ecfdf5' : '#fef2f2',
-                                    color: backupMessage.type === 'success' ? '#065f46' : '#991b1b',
-                                    border: `1px solid ${backupMessage.type === 'success' ? '#10b981' : '#f87171'}`
-                                }}>
-                                    {backupMessage.text}
-                                </div>
-                            )}
-
                             <button
                                 onClick={handleManualBackup}
                                 disabled={isBackingUp}
@@ -566,12 +654,6 @@ function App(): React.ReactElement {
                             <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
                                 Seleccioná un archivo para restaurar la base de datos a ese estado exacto. Se creará una copia de seguridad temporal por protección.
                             </p>
-
-                            {isRestoring && (
-                                <div style={{ ...styles.successBanner, backgroundColor: '#eff6ff', color: '#1d4ed8', borderLeftColor: '#3b82f6' }}>
-                                    🔄 Restaurando base de datos y reiniciando aplicación... Por favor, esperá.
-                                </div>
-                            )}
 
                             <div style={{ overflowX: 'auto' }}>
                                 <table style={styles.table}>
@@ -618,13 +700,6 @@ function App(): React.ReactElement {
                                 🛒 Registrar Venta
                             </h2>
 
-                            {successMessage && (
-                                <div style={styles.successBanner}>{successMessage}</div>
-                            )}
-                            {errorMessage && !isEditing && (
-                                <div style={styles.errorBanner}>{errorMessage}</div>
-                            )}
-
                             <form onSubmit={handleSaleSubmit} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                 <div style={styles.inputGroup}>
                                     <label style={styles.label}>Producto</label>
@@ -635,7 +710,7 @@ function App(): React.ReactElement {
                                         onChange={e => setSelectedProductId(e.target.value)}
                                     >
                                         <option value="">Seleccionar producto...</option>
-                                        {products.map(p => (
+                                        {products.filter(p => p.activo === 1 && p.stockActual > 0).map(p => (
                                             <option key={p.id} value={p.id}>{p.nombre} (ID: {p.id})</option>
                                         ))}
                                     </select>
@@ -661,10 +736,6 @@ function App(): React.ReactElement {
                                 <h2 style={{ marginTop: 0, marginBottom: '20px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {isEditing ? '✏️ Editar Producto' : '✨ Nuevo Producto'}
                                 </h2>
-
-                                {errorMessage && isEditing && (
-                                    <div style={styles.errorBanner}>{errorMessage}</div>
-                                )}
 
                                 <form onSubmit={handleSubmit}>
                                     <div style={styles.formGrid}>

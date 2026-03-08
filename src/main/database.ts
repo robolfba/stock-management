@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
-import type { Producto, CreateSaleData } from '../shared/types'
+import type { Producto, CreateSaleData, BackupFile } from '../shared/types'
 import { logger } from './logger'
 
 // ─── Migration System ────────────────────────────────────────────────────────
@@ -317,6 +317,72 @@ export async function performManualBackup(): Promise<string> {
   const fileName = executeBackup(prefix)
   cleanOldBackups(prefix, 3) // Keep only 3 manual backups
   return fileName
+}
+
+/**
+ * List available backups for the UI
+ */
+export function listAvailableBackups(): BackupFile[] {
+  const backupDir = path.join(app.getPath('userData'), 'backups')
+  if (!fs.existsSync(backupDir)) return []
+
+  const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.db'))
+  return files.map(file => {
+    const stats = fs.statSync(path.join(backupDir, file))
+    return {
+      name: file,
+      date: stats.mtime.toISOString(),
+      size: stats.size
+    }
+  }).sort((a, b) => b.name.localeCompare(a.name)) // descendente
+}
+
+/**
+ * Safely restore from a backup file. Requires application restart immediately after.
+ */
+export function restoreFromBackup(backupFileName: string): void {
+  const userDataPath = app.getPath('userData')
+  const backupDir = path.join(userDataPath, 'backups')
+  const sourcePath = path.join(backupDir, backupFileName)
+  const targetPath = path.join(userDataPath, 'stock.db')
+
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Backup file not found: ${backupFileName}`)
+  }
+
+  // 1. Safety Backup
+  try {
+    const prefix = 'pre-restore-backup-'
+    executeBackup(prefix)
+    cleanOldBackups(prefix, 3) // keep up to 3 safety backups
+  } catch (err) {
+    logger.error(`Error creando backup de seguridad pre-restauración: ${err}`)
+    throw new Error('No se pudo crear el backup de seguridad. Restauración cancelada.')
+  }
+
+  // 2. Cierre seguro de la DB
+  if (db) {
+    try {
+      db.close()
+      db = null
+    } catch (err) {
+      logger.error(`Error cerrando DB para restauración: ${err}`)
+      throw new Error('No se pudo cerrar la base de datos para sobreescritura.')
+    }
+  }
+
+  // 3. Reemplazo del archivo
+  try {
+    fs.copyFileSync(sourcePath, targetPath)
+    logger.info(`Base de datos restaurada exitosamente desde: ${backupFileName}`)
+  } catch (err: any) {
+    logger.error(`Error crítico copiando backup: ${err.message}`)
+    // Intento de mitigación: reabrir la DB actual si falló la copia
+    try {
+      initDatabase()
+    } catch (_) { }
+    throw new Error(`Error copiando archivo de backup: ${err.message}`)
+  }
 }
 
 // --- Operaciones de Ventas (Transacciones) ---

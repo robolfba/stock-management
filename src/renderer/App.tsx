@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { Producto, User } from '../shared/types'
+import type { Producto, User, BackupFile } from '../shared/types'
 
 function App(): React.ReactElement {
     const [version, setVersion] = useState<string>('...')
@@ -11,7 +11,9 @@ function App(): React.ReactElement {
 
     // Backup states
     const [isBackingUp, setIsBackingUp] = useState(false)
+    const [isRestoring, setIsRestoring] = useState(false)
     const [backupMessage, setBackupMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null)
+    const [backupsList, setBackupsList] = useState<BackupFile[]>([])
 
     // Login states
     const [loginUsername, setLoginUsername] = useState('')
@@ -61,6 +63,21 @@ function App(): React.ReactElement {
             setProducts(data)
         } catch (err) {
             console.error('Error cargando productos:', err)
+        }
+    }
+
+    useEffect(() => {
+        if (view === 'settings' && user?.role === 'admin') {
+            loadBackups()
+        }
+    }, [view, user])
+
+    const loadBackups = async () => {
+        try {
+            const list = await window.electronAPI.listBackups()
+            setBackupsList(list)
+        } catch (err: any) {
+            console.error('Error loading backups:', err)
         }
     }
 
@@ -191,10 +208,30 @@ function App(): React.ReactElement {
         try {
             const fileName = await window.electronAPI.generateManualBackup()
             setBackupMessage({ text: `Backup generado con éxito: ${fileName}`, type: 'success' })
+            loadBackups()
         } catch (err: any) {
             setBackupMessage({ text: `Error al generar backup: ${err.message}`, type: 'error' })
         } finally {
             setIsBackingUp(false)
+        }
+    }
+
+    const handleRestoreBackup = async (fileName: string) => {
+        if (!window.confirm(`¿Restaurar desde ${fileName}?\n\nPerderás todos los cambios realizados desde que se creó este backup.`)) {
+            return
+        }
+        if (!window.confirm('⚠️ ESTA ACCIÓN ES IRREVERSIBLE ⚠️\n\nSe generará un backup automático de seguridad antes de proceder.\nLa aplicación se reiniciará inmediatamente después.\n\n¿Estás absolutamente seguro de continuar?')) {
+            return
+        }
+
+        setIsRestoring(true)
+        setBackupMessage({ text: 'Restaurando base de datos... La app se reiniciará en unos instantes.', type: 'success' })
+        try {
+            await window.electronAPI.restoreBackup(fileName)
+            // No se quita el isRestoring porque la app se reinicia sola en este punto
+        } catch (err: any) {
+            setBackupMessage({ text: `Error al restaurar: ${err.message}`, type: 'error' })
+            setIsRestoring(false)
         }
     }
 
@@ -523,6 +560,54 @@ function App(): React.ReactElement {
                             >
                                 {isBackingUp ? '⌛ Generando backup...' : '📦 Generar backup ahora'}
                             </button>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '30px 0' }} />
+                            <h3 style={{ fontSize: '16px', marginBottom: '10px' }}>Restaurar Copia de Seguridad</h3>
+                            <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+                                Seleccioná un archivo para restaurar la base de datos a ese estado exacto. Se creará una copia de seguridad temporal por protección.
+                            </p>
+
+                            {isRestoring && (
+                                <div style={{ ...styles.successBanner, backgroundColor: '#eff6ff', color: '#1d4ed8', borderLeftColor: '#3b82f6' }}>
+                                    🔄 Restaurando base de datos y reiniciando aplicación... Por favor, esperá.
+                                </div>
+                            )}
+
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={styles.table}>
+                                    <thead>
+                                        <tr>
+                                            <th style={styles.th}>Archivo</th>
+                                            <th style={styles.th}>Fecha</th>
+                                            <th style={styles.th}>Tamaño</th>
+                                            <th style={styles.th}>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {backupsList.map(b => (
+                                            <tr key={b.name} style={{ backgroundColor: '#fff', borderBottom: `1px solid ${colors.border}` }}>
+                                                <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '13px' }}>{b.name}</td>
+                                                <td style={{ ...styles.td, fontSize: '13px' }}>{new Date(b.date).toLocaleString()}</td>
+                                                <td style={{ ...styles.td, fontSize: '13px' }}>{(b.size / 1024).toFixed(1)} KB</td>
+                                                <td style={styles.td}>
+                                                    <button
+                                                        onClick={() => handleRestoreBackup(b.name)}
+                                                        disabled={isRestoring || isBackingUp}
+                                                        style={{ ...styles.btnSecondary, color: colors.danger, backgroundColor: '#fff', padding: '6px 12px', fontSize: '12px' }}
+                                                    >
+                                                        Restaurar
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {backupsList.length === 0 && (
+                                            <tr>
+                                                <td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>No hay backups disponibles</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 ) : (

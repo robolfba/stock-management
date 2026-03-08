@@ -46,6 +46,24 @@ class Logger {
     }
 
     /**
+     * Appends an info message to the daily log file.
+     */
+    public info(message: string): void {
+        const now = new Date()
+        const timestamp = now.toISOString().replace('T', ' ').split('.')[0]
+        const logEntry = `${timestamp} - INFO - ${message}\n`
+
+        console.log(`[Logger] ${message}`)
+
+        fs.appendFile(this.getLogPath(), logEntry, (err) => {
+            if (err) {
+                console.error('[Logger] Failed to write to log file:', err)
+            }
+            this.cleanOldLogs()
+        })
+    }
+
+    /**
      * Keeps only the 5 most recent log files.
      */
     private cleanOldLogs(): void {

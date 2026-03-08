@@ -81,6 +81,28 @@ app.whenReady().then(() => {
         return performManualBackup()
     })
 
+    ipcMain.handle('app:list-backups', async () => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            throw new Error('No tenés permisos para listar backups')
+        }
+        const { listAvailableBackups } = require('./database')
+        return listAvailableBackups()
+    })
+
+    ipcMain.handle('app:restore-backup', async (_, fileName) => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            throw new Error('No tenés permisos para restaurar backups')
+        }
+        const { restoreFromBackup } = require('./database')
+
+        // Ejecución síncrona de la restauración segura
+        restoreFromBackup(fileName)
+
+        // Reinicio obligatorio de la aplicación tras sobreescribir el archivo .db
+        app.relaunch()
+        app.exit(0)
+    })
+
     // Auth Handlers
     ipcMain.handle('app:login', async (_, username, password) => {
         const userRow = getUserByUsername(username)

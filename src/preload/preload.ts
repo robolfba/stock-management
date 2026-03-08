@@ -13,6 +13,8 @@ const api: ElectronAPI = {
     logout: () => ipcRenderer.invoke('app:logout'),
     getCurrentUser: () => ipcRenderer.invoke('app:get-current-user'),
     generateManualBackup: () => ipcRenderer.invoke('app:generate-backup'),
+    listBackups: () => ipcRenderer.invoke('app:list-backups'),
+    restoreBackup: (fileName) => ipcRenderer.invoke('app:restore-backup', fileName),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

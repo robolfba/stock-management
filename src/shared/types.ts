@@ -43,6 +43,12 @@ export interface User {
     role: 'admin' | 'vendedor'
 }
 
+export interface BackupFile {
+    name: string
+    date: string
+    size: number
+}
+
 export interface ElectronAPI {
     getVersion: () => Promise<string>
     listProducts: () => Promise<Producto[]>
@@ -57,6 +63,8 @@ export interface ElectronAPI {
     logout: () => Promise<void>
     getCurrentUser: () => Promise<User | null>
     generateManualBackup: () => Promise<string>
+    listBackups: () => Promise<BackupFile[]>
+    restoreBackup: (fileName: string) => Promise<void>
 }
 
 // Augment Window so the renderer gets type-safe access to the exposed API

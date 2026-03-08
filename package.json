@@ -3,7 +3,7 @@
     "version": "0.7.1",
     "description": "Stock Management Desktop App",
     "main": "dist/main/main/index.js",
-    "author": "La Nacion",
+    "author": "rrobol",
     "license": "MIT",
     "scripts": {
         "dev": "node scripts/dev.js",
